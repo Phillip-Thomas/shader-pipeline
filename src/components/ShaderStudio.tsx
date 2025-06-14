@@ -960,6 +960,59 @@ export default function ShaderStudio() {
                 className="w-full h-48 p-4 bg-gray-700 rounded-lg font-mono text-sm resize-none text-white placeholder-gray-400"
               />
             </div>
+            
+            <div className="mb-4 p-4 bg-gray-800 border border-gray-600 rounded-lg">
+              <h4 className="font-semibold text-blue-300 mb-3">Available Uniforms:</h4>
+              <div className="space-y-2 text-sm max-h-48 overflow-y-auto">
+                <div>
+                  <span className="text-green-400 font-mono">uniform sampler2D u_texture;</span>
+                  <div className="text-gray-300 text-xs ml-2">Input video texture</div>
+                </div>
+                <div>
+                  <span className="text-green-400 font-mono">uniform vec2 u_resolution;</span>
+                  <div className="text-gray-300 text-xs ml-2">Canvas width and height</div>
+                </div>
+                <div>
+                  <span className="text-green-400 font-mono">uniform float u_time;</span>
+                  <div className="text-gray-300 text-xs ml-2">Time in seconds (for animation)</div>
+                </div>
+                {objects.length > 0 && (
+                  <>
+                    <hr className="border-gray-600 my-2" />
+                    <div className="text-yellow-300 font-medium">Object Uniforms:</div>
+                    {objects.map((obj, index) => (
+                      <div key={obj.id} className="ml-2">
+                        <div className="text-yellow-400 text-xs font-medium">Object {index} ({obj.type}):</div>
+                        <div className="ml-2 space-y-1">
+                          <div>
+                            <span className="text-green-400 font-mono text-xs">vec2 u_object{index}_pos</span>
+                            <span className="text-gray-300 text-xs ml-1">(center position 0.0-1.0)</span>
+                          </div>
+                          <div>
+                            <span className="text-green-400 font-mono text-xs">vec2 u_object{index}_size</span>
+                            <span className="text-gray-300 text-xs ml-1">(width, height 0.0-1.0)</span>
+                          </div>
+                          <div>
+                            <span className="text-green-400 font-mono text-xs">vec3 u_object{index}_color</span>
+                            <span className="text-gray-300 text-xs ml-1">(RGB 0.0-1.0)</span>
+                          </div>
+                          <div>
+                            <span className="text-green-400 font-mono text-xs">float u_object{index}_rotation</span>
+                            <span className="text-gray-300 text-xs ml-1">(degrees)</span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </>
+                )}
+                <hr className="border-gray-600 my-2" />
+                <div>
+                  <span className="text-purple-400 font-mono">varying vec2 v_texCoord;</span>
+                  <div className="text-gray-300 text-xs ml-2">Current pixel coordinates (0.0-1.0)</div>
+                </div>
+              </div>
+            </div>
+            
             <div className="flex gap-3">
               <button
                 onClick={addCustomShader}
