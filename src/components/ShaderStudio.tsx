@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
-import { Play, Pause, Plus, Trash2, Move, Type, Square, Circle } from 'lucide-react';
+import { Play, Pause, Plus, Trash2, Move, Type, Square, Circle, Eye, EyeOff } from 'lucide-react';
 import { defaultShaders as importedDefaultShaders, vertexShaderSource } from '../shaders/defaultShaders';
 
 interface CanvasObject {
@@ -12,6 +12,7 @@ interface CanvasObject {
   text?: string;
   color: string;
   rotation: number;
+  visible: boolean;
 }
 
 interface Shader {
@@ -41,7 +42,9 @@ export default function ShaderStudio() {
   const [tool, setTool] = useState<'select' | 'text' | 'rect' | 'circle'>('select');
   const [customShader, setCustomShader] = useState('');
   const [showShaderEditor, setShowShaderEditor] = useState(false);
+  const [editingShader, setEditingShader] = useState<string | null>(null);
   const [isVideoLoaded, setIsVideoLoaded] = useState(false);
+  const [objectsVisible, setObjectsVisible] = useState(true);
 
   const createShader = useCallback((gl: WebGLRenderingContext, type: number, source: string) => {
     const shader = gl.createShader(type);
@@ -293,7 +296,13 @@ export default function ShaderStudio() {
         const colorLocation = gl.getUniformLocation(program, `u_object${objIndex}_color`);
         
         if (posLocation !== null) {
-          gl.uniform2f(posLocation, obj.x / canvas.width, obj.y / canvas.height);
+          // Calculate center position of the object's bounding box
+          const centerX = obj.x + obj.width / 2;
+          const centerY = obj.y + obj.height / 2;
+          
+          // Fix coordinate system: Canvas uses top-left origin, WebGL uses bottom-left
+          // So we need to flip the Y coordinate
+          gl.uniform2f(posLocation, centerX / canvas.width, 1.0 - (centerY / canvas.height));
         }
         if (sizeLocation !== null) {
           gl.uniform2f(sizeLocation, obj.width / canvas.width, obj.height / canvas.height);
@@ -384,7 +393,8 @@ export default function ShaderStudio() {
       height: 50,
       text: tool === 'text' ? 'Sample Text' : undefined,
       color: '#ff6b6b',
-      rotation: 0
+      rotation: 0,
+      visible: true
     };
 
     setObjects(prev => [...prev, newObject]);
@@ -394,17 +404,40 @@ export default function ShaderStudio() {
   const addCustomShader = () => {
     if (!customShader.trim()) return;
 
-    const newShader: Shader = {
-      id: Date.now().toString(),
-      name: 'Custom Shader',
-      fragmentShader: customShader,
-      enabled: true,
-      uniforms: {}
-    };
+    if (editingShader) {
+      // Update existing shader
+      setShaders(prev => prev.map(shader => 
+        shader.id === editingShader 
+          ? { ...shader, fragmentShader: customShader }
+          : shader
+      ));
+    } else {
+      // Add new shader
+      const newShader: Shader = {
+        id: Date.now().toString(),
+        name: 'Custom Shader',
+        fragmentShader: customShader,
+        enabled: true,
+        uniforms: {}
+      };
+      setShaders(prev => [...prev, newShader]);
+    }
 
-    setShaders(prev => [...prev, newShader]);
     setCustomShader('');
     setShowShaderEditor(false);
+    setEditingShader(null);
+  };
+
+  const startEditingShader = (shader: Shader) => {
+    setCustomShader(shader.fragmentShader);
+    setEditingShader(shader.id);
+    setShowShaderEditor(true);
+  };
+
+  const cancelShaderEditor = () => {
+    setCustomShader('');
+    setShowShaderEditor(false);
+    setEditingShader(null);
   };
 
   const drawObjects = useCallback(() => {
@@ -417,8 +450,13 @@ export default function ShaderStudio() {
     // Clear the overlay
     ctx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
 
-    // Draw each object
+    // Only draw objects if globally visible
+    if (!objectsVisible) return;
+
+    // Draw each object (check individual visibility)
     objects.forEach(obj => {
+      // Skip if this individual object is hidden
+      if (!obj.visible) return;
       ctx.save();
       
       // Apply rotation if any
@@ -478,7 +516,7 @@ export default function ShaderStudio() {
       
       ctx.restore();
     });
-  }, [objects, selectedObject]);
+  }, [objects, selectedObject, objectsVisible]);
 
   const selectedObj = objects.find(obj => obj.id === selectedObject);
 
@@ -587,31 +625,85 @@ export default function ShaderStudio() {
         <div className="mb-8">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-xl font-semibold">Objects</h3>
-            <button
-              onClick={() => setObjects([])}
-              className="p-2 text-red-400 hover:text-red-300 hover:bg-red-900/20 rounded-lg transition-colors"
-              title="Clear all"
-            >
-              <Trash2 size={18} />
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setObjectsVisible(!objectsVisible)}
+                className={`p-2 rounded-lg transition-colors ${
+                  objectsVisible 
+                    ? 'text-blue-400 hover:text-blue-300 hover:bg-blue-900/20' 
+                    : 'text-gray-400 hover:text-gray-300 hover:bg-gray-700'
+                }`}
+                title={objectsVisible ? "Hide all objects" : "Show all objects"}
+              >
+                {objectsVisible ? <Eye size={18} /> : <EyeOff size={18} />}
+              </button>
+              <button
+                onClick={() => {
+                  setObjects([]);
+                  setSelectedObject(null);
+                }}
+                className="p-2 text-red-400 hover:text-red-300 hover:bg-red-900/20 rounded-lg transition-colors"
+                title="Delete all objects"
+              >
+                <Trash2 size={18} />
+              </button>
+            </div>
           </div>
           <div className="space-y-3">
             {objects.map(obj => (
               <div
                 key={obj.id}
-                className={`p-3 rounded-lg cursor-pointer transition-colors ${
+                className={`p-3 rounded-lg transition-colors ${
                   selectedObject === obj.id ? 'bg-blue-600' : 'bg-gray-700'
-                } hover:bg-blue-500`}
-                onClick={() => setSelectedObject(obj.id)}
+                } ${!obj.visible ? 'opacity-50' : ''}`}
               >
-                <div className="font-medium capitalize flex items-center gap-2">
-                  {obj.type === 'text' && <Type size={16} />}
-                  {obj.type === 'rect' && <Square size={16} />}
-                  {obj.type === 'circle' && <Circle size={16} />}
-                  {obj.type}
-                </div>
-                <div className="text-sm text-gray-300 mt-1">
-                  {obj.type === 'text' ? obj.text : `${Math.round(obj.x)}, ${Math.round(obj.y)}`}
+                <div className="flex items-center justify-between">
+                  <div 
+                    className="flex-1 cursor-pointer"
+                    onClick={() => setSelectedObject(obj.id)}
+                  >
+                    <div className="font-medium capitalize flex items-center gap-2">
+                      {obj.type === 'text' && <Type size={16} />}
+                      {obj.type === 'rect' && <Square size={16} />}
+                      {obj.type === 'circle' && <Circle size={16} />}
+                      {obj.type}
+                      {!obj.visible && <span className="text-xs text-gray-400">(hidden)</span>}
+                    </div>
+                    <div className="text-sm text-gray-300 mt-1">
+                      {obj.type === 'text' ? obj.text : `${Math.round(obj.x)}, ${Math.round(obj.y)}`}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1 ml-2">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setObjects(prev => prev.map(o => 
+                          o.id === obj.id ? { ...o, visible: !o.visible } : o
+                        ));
+                      }}
+                      className={`p-1 rounded transition-colors ${
+                        obj.visible 
+                          ? 'text-blue-400 hover:text-blue-300 hover:bg-blue-900/20' 
+                          : 'text-gray-400 hover:text-gray-300 hover:bg-gray-700'
+                      }`}
+                      title={obj.visible ? "Hide object" : "Show object"}
+                    >
+                      {obj.visible ? <Eye size={14} /> : <EyeOff size={14} />}
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setObjects(prev => prev.filter(o => o.id !== obj.id));
+                        if (selectedObject === obj.id) {
+                          setSelectedObject(null);
+                        }
+                      }}
+                      className="p-1 text-red-400 hover:text-red-300 hover:bg-red-900/20 rounded transition-colors"
+                      title="Delete object"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
                 </div>
               </div>
             ))}
