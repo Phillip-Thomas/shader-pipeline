@@ -1,5 +1,5 @@
-import React from 'react';
-import { Plus, Trash2, Move, Type, Square, Circle, Eye, EyeOff } from 'lucide-react';
+import React, { useState } from 'react';
+import { Plus, Trash2, Move, Type, Square, Circle, Eye, EyeOff, GripVertical } from 'lucide-react';
 import { CanvasObject, Shader } from '../types';
 
 interface SidebarProps {
@@ -59,6 +59,47 @@ export default function Sidebar(props: SidebarProps) {
   } = props;
 
   const selectedObj = objects.find(obj => obj.id === selectedObject);
+  const [draggedShader, setDraggedShader] = useState<string | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+
+  const handleDragStart = (e: React.DragEvent, shaderId: string) => {
+    setDraggedShader(shaderId);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/html', shaderId);
+  };
+
+  const handleDragOver = (e: React.DragEvent, index: number) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    setDragOverIndex(index);
+  };
+
+  const handleDragLeave = () => {
+    setDragOverIndex(null);
+  };
+
+  const handleDrop = (e: React.DragEvent, dropIndex: number) => {
+    e.preventDefault();
+    
+    if (!draggedShader) return;
+
+    const draggedIndex = shaders.findIndex(s => s.id === draggedShader);
+    if (draggedIndex === -1 || draggedIndex === dropIndex) return;
+
+    // Create new array with reordered shaders
+    const newShaders = [...shaders];
+    const [draggedItem] = newShaders.splice(draggedIndex, 1);
+    newShaders.splice(dropIndex, 0, draggedItem);
+
+    setShaders(newShaders);
+    setDraggedShader(null);
+    setDragOverIndex(null);
+  };
+
+  const handleDragEnd = () => {
+    setDraggedShader(null);
+    setDragOverIndex(null);
+  };
 
   return (
     <div className="w-96 bg-gray-800 p-6 overflow-y-auto">
@@ -299,14 +340,38 @@ export default function Sidebar(props: SidebarProps) {
             <Plus size={18} />
           </button>
         </div>
+        <div className="text-xs text-gray-400 mb-4 italic">
+          Drag shaders to reorder • Order affects the final result
+        </div>
         <div className="space-y-4">
-          {shaders.map(shader => {
+          {shaders.map((shader, index) => {
             const isCustomShader = !['grayscale', 'brightness', 'blur', 'chromatic'].includes(shader.id);
+            const isDragging = draggedShader === shader.id;
+            const isDropTarget = dragOverIndex === index;
             
             return (
-              <div key={shader.id} className="p-4 bg-gray-700 rounded-lg">
+              <div 
+                key={shader.id} 
+                draggable
+                onDragStart={(e) => handleDragStart(e, shader.id)}
+                onDragOver={(e) => handleDragOver(e, index)}
+                onDragLeave={handleDragLeave}
+                onDrop={(e) => handleDrop(e, index)}
+                onDragEnd={handleDragEnd}
+                className={`p-4 rounded-lg transition-all duration-200 ${
+                  isDragging 
+                    ? 'bg-gray-600 opacity-50 scale-105 shadow-lg' 
+                    : isDropTarget
+                    ? 'bg-blue-900/30 border-2 border-blue-400 border-dashed'
+                    : 'bg-gray-700'
+                } ${isDragging ? '' : 'hover:bg-gray-600'} cursor-move`}
+              >
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-2">
+                    <GripVertical 
+                      size={16} 
+                      className="text-gray-400 hover:text-gray-300 cursor-grab active:cursor-grabbing" 
+                    />
                     <span 
                       className={`font-medium text-lg ${isCustomShader ? 'cursor-pointer hover:text-blue-300 transition-colors' : ''}`}
                       onClick={() => isCustomShader && startEditingShader(shader)}
