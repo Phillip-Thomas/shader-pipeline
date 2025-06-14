@@ -41,6 +41,7 @@ export default function ShaderStudio() {
   const [selectedObject, setSelectedObject] = useState<string | null>(null);
   const [tool, setTool] = useState<'select' | 'text' | 'rect' | 'circle'>('select');
   const [customShader, setCustomShader] = useState('');
+  const [customShaderName, setCustomShaderName] = useState('');
   const [showShaderEditor, setShowShaderEditor] = useState(false);
   const [editingShader, setEditingShader] = useState<string | null>(null);
   const [isVideoLoaded, setIsVideoLoaded] = useState(false);
@@ -402,20 +403,20 @@ export default function ShaderStudio() {
   };
 
   const addCustomShader = () => {
-    if (!customShader.trim()) return;
+    if (!customShader.trim() || !customShaderName.trim()) return;
 
     if (editingShader) {
       // Update existing shader
       setShaders(prev => prev.map(shader => 
         shader.id === editingShader 
-          ? { ...shader, fragmentShader: customShader }
+          ? { ...shader, name: customShaderName, fragmentShader: customShader }
           : shader
       ));
     } else {
       // Add new shader
       const newShader: Shader = {
         id: Date.now().toString(),
-        name: 'Custom Shader',
+        name: customShaderName,
         fragmentShader: customShader,
         enabled: true,
         uniforms: {}
@@ -424,18 +425,21 @@ export default function ShaderStudio() {
     }
 
     setCustomShader('');
+    setCustomShaderName('');
     setShowShaderEditor(false);
     setEditingShader(null);
   };
 
   const startEditingShader = (shader: Shader) => {
     setCustomShader(shader.fragmentShader);
+    setCustomShaderName(shader.name);
     setEditingShader(shader.id);
     setShowShaderEditor(true);
   };
 
   const cancelShaderEditor = () => {
     setCustomShader('');
+    setCustomShaderName('');
     setShowShaderEditor(false);
     setEditingShader(null);
   };
@@ -833,24 +837,49 @@ export default function ShaderStudio() {
             </button>
           </div>
           <div className="space-y-4">
-            {shaders.map(shader => (
-              <div key={shader.id} className="p-4 bg-gray-700 rounded-lg">
-                <div className="flex items-center justify-between mb-3">
-                  <span className="font-medium text-lg">{shader.name}</span>
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={shader.enabled}
-                      onChange={(e) => {
-                        setShaders(prev => prev.map(s => 
-                          s.id === shader.id ? { ...s, enabled: e.target.checked } : s
-                        ));
-                      }}
-                      className="w-4 h-4 rounded"
-                    />
-                    <span className="text-sm">Enabled</span>
-                  </label>
-                </div>
+            {shaders.map(shader => {
+              const isCustomShader = !['grayscale', 'brightness', 'blur', 'chromatic'].includes(shader.id);
+              
+              return (
+                <div key={shader.id} className="p-4 bg-gray-700 rounded-lg">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <span 
+                        className={`font-medium text-lg ${isCustomShader ? 'cursor-pointer hover:text-blue-300 transition-colors' : ''}`}
+                        onClick={() => isCustomShader && startEditingShader(shader)}
+                        title={isCustomShader ? 'Click to edit shader' : ''}
+                      >
+                        {shader.name}
+                      </span>
+                      {isCustomShader && <span className="text-xs text-green-400">(custom)</span>}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {isCustomShader && (
+                        <button
+                          onClick={() => {
+                            setShaders(prev => prev.filter(s => s.id !== shader.id));
+                          }}
+                          className="p-1 text-red-400 hover:text-red-300 hover:bg-red-900/20 rounded transition-colors"
+                          title="Delete custom shader"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      )}
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={shader.enabled}
+                          onChange={(e) => {
+                            setShaders(prev => prev.map(s => 
+                              s.id === shader.id ? { ...s, enabled: e.target.checked } : s
+                            ));
+                          }}
+                          className="w-4 h-4 rounded"
+                        />
+                        <span className="text-sm">Enabled</span>
+                      </label>
+                    </div>
+                  </div>
                 {Object.entries(shader.uniforms).map(([name, value]) => {
                   // Define different ranges for different uniform types
                   let min = 0, max = 2, step = 0.01;
@@ -898,28 +927,53 @@ export default function ShaderStudio() {
                   );
                 })}
               </div>
-            ))}
+            );
+            })}
           </div>
         </div>
 
         {showShaderEditor && (
           <div className="mb-8">
-            <h3 className="text-xl font-semibold mb-4">Custom Shader</h3>
-            <textarea
-              value={customShader}
-              onChange={(e) => setCustomShader(e.target.value)}
-              placeholder="Enter fragment shader code...&#10;&#10;Example:&#10;precision mediump float;&#10;uniform sampler2D u_texture;&#10;uniform float u_time;&#10;varying vec2 v_texCoord;&#10;&#10;void main() {&#10;  vec4 color = texture2D(u_texture, v_texCoord);&#10;  color.rgb *= sin(u_time) * 0.5 + 0.5;&#10;  gl_FragColor = color;&#10;}"
-              className="w-full h-48 p-4 bg-gray-700 rounded-lg font-mono text-sm resize-none"
-            />
-            <div className="flex gap-3 mt-4">
+            <h3 className="text-xl font-semibold mb-4">
+              {editingShader ? 'Edit Custom Shader' : 'Add Custom Shader'}
+            </h3>
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Shader Name
+              </label>
+              <input
+                type="text"
+                value={customShaderName}
+                onChange={(e) => setCustomShaderName(e.target.value)}
+                placeholder="Enter shader name (e.g., 'Ripple Effect', 'Color Distortion')"
+                className="w-full p-3 bg-gray-700 rounded-lg text-white placeholder-gray-400"
+              />
+            </div>
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Fragment Shader Code
+              </label>
+              <textarea
+                value={customShader}
+                onChange={(e) => setCustomShader(e.target.value)}
+                placeholder="Enter fragment shader code...&#10;&#10;Example:&#10;precision mediump float;&#10;uniform sampler2D u_texture;&#10;uniform float u_time;&#10;varying vec2 v_texCoord;&#10;&#10;void main() {&#10;  vec4 color = texture2D(u_texture, v_texCoord);&#10;  color.rgb *= sin(u_time) * 0.5 + 0.5;&#10;  gl_FragColor = color;&#10;}"
+                className="w-full h-48 p-4 bg-gray-700 rounded-lg font-mono text-sm resize-none text-white placeholder-gray-400"
+              />
+            </div>
+            <div className="flex gap-3">
               <button
                 onClick={addCustomShader}
-                className="px-6 py-2 bg-green-600 rounded-lg hover:bg-green-500 font-medium transition-colors"
+                disabled={!customShader.trim() || !customShaderName.trim()}
+                className={`px-6 py-2 rounded-lg font-medium transition-colors ${
+                  customShader.trim() && customShaderName.trim()
+                    ? 'bg-green-600 hover:bg-green-500'
+                    : 'bg-gray-600 cursor-not-allowed'
+                }`}
               >
-                Add Shader
+                {editingShader ? 'Save Changes' : 'Add Shader'}
               </button>
               <button
-                onClick={() => setShowShaderEditor(false)}
+                onClick={cancelShaderEditor}
                 className="px-6 py-2 bg-gray-600 rounded-lg hover:bg-gray-500 font-medium transition-colors"
               >
                 Cancel
