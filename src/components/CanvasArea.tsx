@@ -6,9 +6,8 @@ interface CanvasAreaProps {
   overlayCanvasRef: React.RefObject<HTMLCanvasElement>;
   videoRef: React.RefObject<HTMLVideoElement>;
   isPlaying: boolean;
-  isVideoLoaded: boolean;
-  togglePlay: () => void;
-  addObject: (e: React.MouseEvent) => void;
+  setIsPlaying: (playing: boolean) => void;
+  addObject: (x: number, y: number) => void;
 }
 
 export default function CanvasArea({
@@ -16,31 +15,44 @@ export default function CanvasArea({
   overlayCanvasRef,
   videoRef,
   isPlaying,
-  isVideoLoaded,
-  togglePlay,
+  setIsPlaying,
   addObject,
 }: CanvasAreaProps) {
+  const togglePlay = () => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    if (isPlaying) {
+      video.pause();
+    } else {
+      video.play();
+    }
+    setIsPlaying(!isPlaying);
+  };
+
+  const handleCanvasClick = (e: React.MouseEvent) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    addObject(x, y);
+  };
+
   return (
     <div className="flex-1 flex flex-col">
       {/* Controls Header */}
       <div className="bg-gray-800 p-4 flex items-center gap-4">
         <button
           onClick={togglePlay}
-          disabled={!isVideoLoaded}
-          className={`flex items-center gap-2 px-4 py-2 rounded transition-colors ${
-            isVideoLoaded 
-              ? 'bg-blue-600 hover:bg-blue-500' 
-              : 'bg-gray-600 cursor-not-allowed'
-          }`}
+          className="flex items-center gap-2 px-4 py-2 rounded bg-blue-600 hover:bg-blue-500 transition-colors"
         >
           {isPlaying ? <Pause size={16} /> : <Play size={16} />}
           {isPlaying ? 'Pause' : 'Play'}
         </button>
         <span className="text-sm text-gray-300">
-          {isVideoLoaded 
-            ? 'Click canvas to add objects • Use left panel to control shaders'
-            : 'Loading video content...'
-          }
+          Click canvas to add objects • Use left panel to control shaders
         </span>
       </div>
       
@@ -52,7 +64,7 @@ export default function CanvasArea({
             width={800}
             height={450}
             className="border border-gray-600 cursor-crosshair"
-            onClick={addObject}
+            onClick={handleCanvasClick}
           />
           <canvas
             ref={overlayCanvasRef}

@@ -4,63 +4,52 @@ import { CanvasObject, Shader } from '../types';
 
 interface SidebarProps {
   // Tool state
-  tool: 'select' | 'text' | 'rect' | 'circle';
-  setTool: (tool: 'select' | 'text' | 'rect' | 'circle') => void;
+  currentTool: 'select' | 'text' | 'rect' | 'circle';
+  setCurrentTool: (tool: 'select' | 'text' | 'rect' | 'circle') => void;
   
   // Objects state
   objects: CanvasObject[];
-  setObjects: React.Dispatch<React.SetStateAction<CanvasObject[]>>;
   selectedObject: string | null;
   setSelectedObject: (id: string | null) => void;
+  selectedObjectData: CanvasObject | null;
+  updateObject: (id: string, updates: Partial<CanvasObject>) => void;
+  deleteObject: (id: string) => void;
   objectsVisible: boolean;
   setObjectsVisible: (visible: boolean) => void;
   
   // Shaders state
   shaders: Shader[];
-  setShaders: React.Dispatch<React.SetStateAction<Shader[]>>;
-  
-  // Custom shader editor state
-  customShader: string;
-  setCustomShader: (shader: string) => void;
-  customShaderName: string;
-  setCustomShaderName: (name: string) => void;
-  showShaderEditor: boolean;
-  setShowShaderEditor: (show: boolean) => void;
-  editingShader: string | null;
-  
-  // Functions
-  addCustomShader: () => void;
-  startEditingShader: (shader: Shader) => void;
-  cancelShaderEditor: () => void;
+  updateShader: (id: string, updates: Partial<Shader>) => void;
+  deleteShader: (id: string) => void;
+  addCustomShader: (name: string, fragmentShader: string) => void;
+  reorderShaders: (dragIndex: number, hoverIndex: number) => void;
 }
 
 export default function Sidebar(props: SidebarProps) {
   const {
-    tool,
-    setTool,
+    currentTool,
+    setCurrentTool,
     objects,
-    setObjects,
     selectedObject,
     setSelectedObject,
+    selectedObjectData,
+    updateObject,
+    deleteObject,
     objectsVisible,
     setObjectsVisible,
     shaders,
-    setShaders,
-    customShader,
-    setCustomShader,
-    customShaderName,
-    setCustomShaderName,
-    showShaderEditor,
-    setShowShaderEditor,
-    editingShader,
+    updateShader,
+    deleteShader,
     addCustomShader,
-    startEditingShader,
-    cancelShaderEditor,
+    reorderShaders,
   } = props;
 
-  const selectedObj = objects.find(obj => obj.id === selectedObject);
   const [draggedShader, setDraggedShader] = useState<string | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+  const [showShaderEditor, setShowShaderEditor] = useState(false);
+  const [customShader, setCustomShader] = useState('');
+  const [customShaderName, setCustomShaderName] = useState('');
+  const [editingShader, setEditingShader] = useState<string | null>(null);
 
   const handleDragStart = (e: React.DragEvent, shaderId: string) => {
     setDraggedShader(shaderId);
@@ -86,12 +75,7 @@ export default function Sidebar(props: SidebarProps) {
     const draggedIndex = shaders.findIndex(s => s.id === draggedShader);
     if (draggedIndex === -1 || draggedIndex === dropIndex) return;
 
-    // Create new array with reordered shaders
-    const newShaders = [...shaders];
-    const [draggedItem] = newShaders.splice(draggedIndex, 1);
-    newShaders.splice(dropIndex, 0, draggedItem);
-
-    setShaders(newShaders);
+    reorderShaders(draggedIndex, dropIndex);
     setDraggedShader(null);
     setDragOverIndex(null);
   };
@@ -99,6 +83,37 @@ export default function Sidebar(props: SidebarProps) {
   const handleDragEnd = () => {
     setDraggedShader(null);
     setDragOverIndex(null);
+  };
+
+  const handleAddCustomShader = () => {
+    if (!customShader.trim() || !customShaderName.trim()) return;
+
+    if (editingShader) {
+      // Update existing shader
+      updateShader(editingShader, { name: customShaderName, fragmentShader: customShader });
+    } else {
+      // Add new shader
+      addCustomShader(customShaderName, customShader);
+    }
+
+    setCustomShader('');
+    setCustomShaderName('');
+    setShowShaderEditor(false);
+    setEditingShader(null);
+  };
+
+  const startEditingShader = (shader: Shader) => {
+    setCustomShader(shader.fragmentShader);
+    setCustomShaderName(shader.name);
+    setEditingShader(shader.id);
+    setShowShaderEditor(true);
+  };
+
+  const cancelShaderEditor = () => {
+    setCustomShader('');
+    setCustomShaderName('');
+    setShowShaderEditor(false);
+    setEditingShader(null);
   };
 
   return (
@@ -115,9 +130,9 @@ export default function Sidebar(props: SidebarProps) {
           ].map(({ id, icon: Icon, label }) => (
             <button
               key={id}
-              onClick={() => setTool(id as any)}
+              onClick={() => setCurrentTool(id as any)}
               className={`p-3 rounded-lg flex items-center gap-2 ${
-                tool === id ? 'bg-blue-600' : 'bg-gray-700'
+                currentTool === id ? 'bg-blue-600' : 'bg-gray-700'
               } hover:bg-blue-500 transition-colors`}
             >
               <Icon size={18} />
@@ -145,7 +160,7 @@ export default function Sidebar(props: SidebarProps) {
             </button>
             <button
               onClick={() => {
-                setObjects([]);
+                objects.forEach(obj => deleteObject(obj.id));
                 setSelectedObject(null);
               }}
               className="p-2 text-red-400 hover:text-red-300 hover:bg-red-900/20 rounded-lg transition-colors"
@@ -183,9 +198,7 @@ export default function Sidebar(props: SidebarProps) {
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      setObjects(prev => prev.map(o => 
-                        o.id === obj.id ? { ...o, visible: !o.visible } : o
-                      ));
+                      updateObject(obj.id, { visible: !obj.visible });
                     }}
                     className={`p-1 rounded transition-colors ${
                       obj.visible 
@@ -199,7 +212,7 @@ export default function Sidebar(props: SidebarProps) {
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      setObjects(prev => prev.filter(o => o.id !== obj.id));
+                      deleteObject(obj.id);
                       if (selectedObject === obj.id) {
                         setSelectedObject(null);
                       }
@@ -221,7 +234,7 @@ export default function Sidebar(props: SidebarProps) {
         </div>
 
         {/* Object Properties */}
-        {selectedObj && (
+        {selectedObjectData && (
           <div className="mt-6 p-4 bg-gray-700 rounded-lg">
             <h4 className="text-lg font-semibold mb-3 text-blue-300">Object Properties</h4>
             <div className="space-y-3">
@@ -229,11 +242,9 @@ export default function Sidebar(props: SidebarProps) {
                 <label className="block text-sm mb-1">X Position</label>
                 <input
                   type="number"
-                  value={Math.round(selectedObj.x)}
+                  value={Math.round(selectedObjectData.x)}
                   onChange={(e) => {
-                    setObjects(prev => prev.map(obj => 
-                      obj.id === selectedObject ? { ...obj, x: parseInt(e.target.value) || 0 } : obj
-                    ));
+                    updateObject(selectedObjectData.id, { x: parseInt(e.target.value) || 0 });
                   }}
                   className="w-full p-2 bg-gray-600 rounded text-white"
                 />
@@ -242,11 +253,9 @@ export default function Sidebar(props: SidebarProps) {
                 <label className="block text-sm mb-1">Y Position</label>
                 <input
                   type="number"
-                  value={Math.round(selectedObj.y)}
+                  value={Math.round(selectedObjectData.y)}
                   onChange={(e) => {
-                    setObjects(prev => prev.map(obj => 
-                      obj.id === selectedObject ? { ...obj, y: parseInt(e.target.value) || 0 } : obj
-                    ));
+                    updateObject(selectedObjectData.id, { y: parseInt(e.target.value) || 0 });
                   }}
                   className="w-full p-2 bg-gray-600 rounded text-white"
                 />
@@ -255,11 +264,9 @@ export default function Sidebar(props: SidebarProps) {
                 <label className="block text-sm mb-1">Width</label>
                 <input
                   type="number"
-                  value={Math.round(selectedObj.width)}
+                  value={Math.round(selectedObjectData.width)}
                   onChange={(e) => {
-                    setObjects(prev => prev.map(obj => 
-                      obj.id === selectedObject ? { ...obj, width: parseInt(e.target.value) || 1 } : obj
-                    ));
+                    updateObject(selectedObjectData.id, { width: parseInt(e.target.value) || 1 });
                   }}
                   className="w-full p-2 bg-gray-600 rounded text-white"
                 />
@@ -268,11 +275,9 @@ export default function Sidebar(props: SidebarProps) {
                 <label className="block text-sm mb-1">Height</label>
                 <input
                   type="number"
-                  value={Math.round(selectedObj.height)}
+                  value={Math.round(selectedObjectData.height)}
                   onChange={(e) => {
-                    setObjects(prev => prev.map(obj => 
-                      obj.id === selectedObject ? { ...obj, height: parseInt(e.target.value) || 1 } : obj
-                    ));
+                    updateObject(selectedObjectData.id, { height: parseInt(e.target.value) || 1 });
                   }}
                   className="w-full p-2 bg-gray-600 rounded text-white"
                 />
@@ -283,41 +288,35 @@ export default function Sidebar(props: SidebarProps) {
                   type="range"
                   min="0"
                   max="360"
-                  value={selectedObj.rotation}
+                  value={selectedObjectData.rotation}
                   onChange={(e) => {
-                    setObjects(prev => prev.map(obj => 
-                      obj.id === selectedObject ? { ...obj, rotation: parseInt(e.target.value) } : obj
-                    ));
+                    updateObject(selectedObjectData.id, { rotation: parseInt(e.target.value) });
                   }}
                   className="w-full"
                 />
                 <div className="text-xs text-gray-400 mt-1 text-center">
-                  {selectedObj.rotation}°
+                  {selectedObjectData.rotation}°
                 </div>
               </div>
               <div>
                 <label className="block text-sm mb-1">Color</label>
                 <input
                   type="color"
-                  value={selectedObj.color}
+                  value={selectedObjectData.color}
                   onChange={(e) => {
-                    setObjects(prev => prev.map(obj => 
-                      obj.id === selectedObject ? { ...obj, color: e.target.value } : obj
-                    ));
+                    updateObject(selectedObjectData.id, { color: e.target.value });
                   }}
                   className="w-full p-2 bg-gray-600 rounded"
                 />
               </div>
-              {selectedObj.type === 'text' && (
+              {selectedObjectData.type === 'text' && (
                 <div>
                   <label className="block text-sm mb-1">Text</label>
                   <input
                     type="text"
-                    value={selectedObj.text || ''}
+                    value={selectedObjectData.text || ''}
                     onChange={(e) => {
-                      setObjects(prev => prev.map(obj => 
-                        obj.id === selectedObject ? { ...obj, text: e.target.value } : obj
-                      ));
+                      updateObject(selectedObjectData.id, { text: e.target.value });
                     }}
                     className="w-full p-2 bg-gray-600 rounded text-white"
                   />
@@ -384,9 +383,7 @@ export default function Sidebar(props: SidebarProps) {
                   <div className="flex items-center gap-2">
                     {isCustomShader && (
                       <button
-                        onClick={() => {
-                          setShaders(prev => prev.filter(s => s.id !== shader.id));
-                        }}
+                        onClick={() => deleteShader(shader.id)}
                         className="p-1 text-red-400 hover:text-red-300 hover:bg-red-900/20 rounded transition-colors"
                         title="Delete custom shader"
                       >
@@ -398,9 +395,7 @@ export default function Sidebar(props: SidebarProps) {
                         type="checkbox"
                         checked={shader.enabled}
                         onChange={(e) => {
-                          setShaders(prev => prev.map(s => 
-                            s.id === shader.id ? { ...s, enabled: e.target.checked } : s
-                          ));
+                          updateShader(shader.id, { enabled: e.target.checked });
                         }}
                         className="w-4 h-4 rounded"
                       />
@@ -438,11 +433,9 @@ export default function Sidebar(props: SidebarProps) {
                         step={step}
                         value={value}
                         onChange={(e) => {
-                          setShaders(prev => prev.map(s => 
-                            s.id === shader.id 
-                              ? { ...s, uniforms: { ...s.uniforms, [name]: parseFloat(e.target.value) }}
-                              : s
-                          ));
+                          updateShader(shader.id, { 
+                            uniforms: { ...shader.uniforms, [name]: parseFloat(e.target.value) }
+                          });
                         }}
                         className="w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer"
                       />
@@ -499,64 +492,57 @@ export default function Sidebar(props: SidebarProps) {
               </div>
               <div>
                 <span className="text-green-400 font-mono">uniform vec2 u_resolution;</span>
-                <div className="text-gray-300 text-xs ml-2">Canvas width and height</div>
+                <div className="text-gray-300 text-xs ml-2">Canvas resolution (width, height)</div>
               </div>
               <div>
                 <span className="text-green-400 font-mono">uniform float u_time;</span>
-                <div className="text-gray-300 text-xs ml-2">Time in seconds (for animation)</div>
+                <div className="text-gray-300 text-xs ml-2">Time in seconds since start</div>
               </div>
-              {objects.length > 0 && (
-                <>
-                  <hr className="border-gray-600 my-2" />
-                  <div className="text-yellow-300 font-medium">Object Uniforms:</div>
-                  {objects.map((obj, index) => (
-                    <div key={obj.id} className="ml-2">
-                      <div className="text-yellow-400 text-xs font-medium">Object {index} ({obj.type}):</div>
-                      <div className="ml-2 space-y-1">
-                        <div>
-                          <span className="text-green-400 font-mono text-xs">vec2 u_object{index}_pos</span>
-                          <span className="text-gray-300 text-xs ml-1">(center position 0.0-1.0)</span>
-                        </div>
-                        <div>
-                          <span className="text-green-400 font-mono text-xs">vec2 u_object{index}_size</span>
-                          <span className="text-gray-300 text-xs ml-1">(width, height 0.0-1.0)</span>
-                        </div>
-                        <div>
-                          <span className="text-green-400 font-mono text-xs">vec3 u_object{index}_color</span>
-                          <span className="text-gray-300 text-xs ml-1">(RGB 0.0-1.0)</span>
-                        </div>
-                        <div>
-                          <span className="text-green-400 font-mono text-xs">float u_object{index}_rotation</span>
-                          <span className="text-gray-300 text-xs ml-1">(degrees)</span>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </>
-              )}
-              <hr className="border-gray-600 my-2" />
               <div>
                 <span className="text-purple-400 font-mono">varying vec2 v_texCoord;</span>
-                <div className="text-gray-300 text-xs ml-2">Current pixel coordinates (0.0-1.0)</div>
+                <div className="text-gray-300 text-xs ml-2">Texture coordinates (0.0-1.0)</div>
+              </div>
+              
+              <div className="pt-2 border-t border-gray-600">
+                <div className="text-yellow-400 font-semibold mb-2">Object-based uniforms:</div>
+                {objects.map((obj, index) => (
+                  <div key={obj.id} className="mb-2">
+                    <div className="text-yellow-400 font-mono text-xs">Object {index} ({obj.type}):</div>
+                    <div className="ml-2 space-y-1">
+                      <div>
+                        <span className="text-yellow-400 font-mono">uniform vec2 u_object{index}_pos;</span>
+                        <div className="text-gray-300 text-xs ml-2">Center position (0.0-1.0)</div>
+                      </div>
+                      <div>
+                        <span className="text-yellow-400 font-mono">uniform vec2 u_object{index}_size;</span>
+                        <div className="text-gray-300 text-xs ml-2">Size (width, height) normalized</div>
+                      </div>
+                      <div>
+                        <span className="text-yellow-400 font-mono">uniform vec3 u_object{index}_color;</span>
+                        <div className="text-gray-300 text-xs ml-2">RGB color (0.0-1.0)</div>
+                      </div>
+                      <div>
+                        <span className="text-yellow-400 font-mono">uniform float u_object{index}_rotation;</span>
+                        <div className="text-gray-300 text-xs ml-2">Rotation in degrees</div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           </div>
           
           <div className="flex gap-3">
             <button
-              onClick={addCustomShader}
+              onClick={handleAddCustomShader}
               disabled={!customShader.trim() || !customShaderName.trim()}
-              className={`px-6 py-2 rounded-lg font-medium transition-colors ${
-                customShader.trim() && customShaderName.trim()
-                  ? 'bg-green-600 hover:bg-green-500'
-                  : 'bg-gray-600 cursor-not-allowed'
-              }`}
+              className="flex-1 bg-green-600 hover:bg-green-500 disabled:bg-gray-600 disabled:cursor-not-allowed px-4 py-2 rounded-lg transition-colors"
             >
-              {editingShader ? 'Save Changes' : 'Add Shader'}
+              {editingShader ? 'Update Shader' : 'Add Shader'}
             </button>
             <button
               onClick={cancelShaderEditor}
-              className="px-6 py-2 bg-gray-600 rounded-lg hover:bg-gray-500 font-medium transition-colors"
+              className="px-4 py-2 bg-gray-600 hover:bg-gray-500 rounded-lg transition-colors"
             >
               Cancel
             </button>
