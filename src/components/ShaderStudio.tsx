@@ -5,7 +5,7 @@ import Sidebar from './Sidebar';
 import CanvasArea from './CanvasArea';
 import { useWebGLRenderer } from './WebGLRenderer';
 import { useObjectRenderer } from './ObjectRenderer';
-import { useVideoManager } from './VideoManager';
+import { useVideoCanvasRenderer } from './VideoCanvasRenderer';
 import { defaultShaders } from '../shaders/defaultShaders';
 import { CanvasObject, Shader } from '../types';
 
@@ -14,19 +14,19 @@ export default function ShaderStudio() {
   const [objects, setObjects] = useState<CanvasObject[]>([]);
   const [selectedObject, setSelectedObject] = useState<string | null>(null);
   const [shaders, setShaders] = useState<Shader[]>(defaultShaders);
-  const [isPlaying, setIsPlaying] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(true); // Start playing automatically
   const [isVideoLoaded, setIsVideoLoaded] = useState(false);
   const [objectsVisible, setObjectsVisible] = useState(true);
 
-  const videoRef = useRef<HTMLVideoElement>(null);
+  const videoCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const overlayCanvasRef = useRef<HTMLCanvasElement>(null);
   const animationFrameRef = useRef<number | undefined>();
 
   // Initialize custom hooks
-  const { setupWebGL, render } = useWebGLRenderer({
+  const { updateShaderCommands, render } = useWebGLRenderer({
     canvasRef,
-    videoRef,
+    videoCanvasRef,
     shaders,
     objects,
     isPlaying,
@@ -41,15 +41,34 @@ export default function ShaderStudio() {
     objectsVisible,
   });
 
-  useVideoManager({
-    videoRef,
+  // Initialize video canvas renderer
+  const { getVideoCanvas } = useVideoCanvasRenderer({
+    videoUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
+    isPlaying,
     setIsVideoLoaded,
   });
 
-  // Setup WebGL when shaders change
+  // Update videoCanvasRef when the video canvas is available
   useEffect(() => {
-    setupWebGL();
-  }, [shaders, setupWebGL]);
+    const updateVideoCanvas = () => {
+      videoCanvasRef.current = getVideoCanvas();
+      if (!videoCanvasRef.current) {
+        console.log("Video canvas not available yet, retrying...");
+        setTimeout(updateVideoCanvas, 100);
+      } else {
+        console.log("Video canvas is now available");
+        // Force a render to ensure the video appears
+        render();
+      }
+    };
+
+    updateVideoCanvas();
+  }, [getVideoCanvas, render]);
+
+  // Update shader commands when shaders change
+  useEffect(() => {
+    updateShaderCommands();
+  }, [shaders, objects, updateShaderCommands]);
 
   // Redraw objects when they change
   useEffect(() => {
@@ -92,7 +111,7 @@ export default function ShaderStudio() {
   };
 
   const updateObject = (id: string, updates: Partial<CanvasObject>) => {
-    setObjects(prev => prev.map(obj => 
+    setObjects(prev => prev.map(obj =>
       obj.id === id ? { ...obj, ...updates } : obj
     ));
   };
@@ -104,13 +123,13 @@ export default function ShaderStudio() {
     }
   };
 
-  const selectedObjectData = useMemo(() => 
+  const selectedObjectData = useMemo(() =>
     objects.find(obj => obj.id === selectedObject) || null,
     [objects, selectedObject]
   );
 
   const updateShader = (id: string, updates: Partial<Shader>) => {
-    setShaders(prev => prev.map(shader => 
+    setShaders(prev => prev.map(shader =>
       shader.id === id ? { ...shader, ...updates } : shader
     ));
   };
@@ -160,12 +179,11 @@ export default function ShaderStudio() {
           addCustomShader={addCustomShader}
           reorderShaders={reorderShaders}
         />
-        
+
         <div className="flex-1 flex flex-col">
           <CanvasArea
             canvasRef={canvasRef}
             overlayCanvasRef={overlayCanvasRef}
-            videoRef={videoRef}
             isPlaying={isPlaying}
             setIsPlaying={setIsPlaying}
             addObject={addObject}
@@ -174,4 +192,4 @@ export default function ShaderStudio() {
       </div>
     </DndProvider>
   );
-} 
+}

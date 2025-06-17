@@ -4,7 +4,6 @@ import { Play, Pause } from 'lucide-react';
 interface CanvasAreaProps {
   canvasRef: React.RefObject<HTMLCanvasElement>;
   overlayCanvasRef: React.RefObject<HTMLCanvasElement>;
-  videoRef: React.RefObject<HTMLVideoElement>;
   isPlaying: boolean;
   setIsPlaying: (playing: boolean) => void;
   addObject: (x: number, y: number) => void;
@@ -13,20 +12,11 @@ interface CanvasAreaProps {
 export default function CanvasArea({
   canvasRef,
   overlayCanvasRef,
-  videoRef,
   isPlaying,
   setIsPlaying,
   addObject,
 }: CanvasAreaProps) {
   const togglePlay = () => {
-    const video = videoRef.current;
-    if (!video) return;
-
-    if (isPlaying) {
-      video.pause();
-    } else {
-      video.play();
-    }
     setIsPlaying(!isPlaying);
   };
 
@@ -55,7 +45,7 @@ export default function CanvasArea({
           Click canvas to add objects • Use left panel to control shaders
         </span>
       </div>
-      
+
       {/* Canvas Container */}
       <div className="flex-1 flex items-center justify-center bg-black p-8">
         <div className="relative">
@@ -72,18 +62,9 @@ export default function CanvasArea({
             height={450}
             className="absolute top-0 left-0 pointer-events-none"
           />
-          <video
-            ref={videoRef}
-            width={800}
-            height={450}
-            className="hidden"
-            src="https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4"
-            loop
-            muted
-            crossOrigin="anonymous"
-          />
+          {/* Video is now rendered directly to canvas via VideoCanvasRenderer */}
         </div>
       </div>
     </div>
   );
-} 
+}
