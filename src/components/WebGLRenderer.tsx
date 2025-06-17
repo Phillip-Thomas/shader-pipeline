@@ -28,6 +28,7 @@ export function useWebGLRenderer({
   const commandsRef = useRef<any[]>([]);
   const fbosRef = useRef<any[]>([]);
   const videoTextureRef = useRef<any>(null);
+  const simplePassthroughRef = useRef<any>(null);
   const [isInitialized, setIsInitialized] = useState(false);
 
   // Set up video texture
@@ -95,6 +96,38 @@ export function useWebGLRenderer({
     // Initialize commands array
     commandsRef.current = [];
 
+    // Create a simple pass-through shader once
+    simplePassthroughRef.current = regl({
+      frag: `
+        precision mediump float;
+        uniform sampler2D u_texture;
+        varying vec2 v_texCoord;
+        void main() {
+          gl_FragColor = texture2D(u_texture, v_texCoord);
+        }
+      `,
+      vert: vertexShaderSource,
+      attributes: {
+        a_position: [
+          [-1, -1],
+          [1, -1],
+          [-1, 1],
+          [1, 1]
+        ],
+        a_texCoord: [
+          [0, 1],  // Flip Y coordinate
+          [1, 1],
+          [0, 0],
+          [1, 0]
+        ]
+      },
+      uniforms: {
+        u_texture: regl.prop('texture')
+      },
+      count: 4,
+      primitive: 'triangle strip'
+    });
+
     // Set up the video texture
     setupVideoTexture();
 
@@ -107,6 +140,21 @@ export function useWebGLRenderer({
 
     console.log('Updating shader commands...');
     const regl = reglRef.current;
+
+    // Dispose of old shader commands to prevent memory leaks
+    if (commandsRef.current.length > 0) {
+      console.log(`Disposing ${commandsRef.current.length} old shader commands`);
+      commandsRef.current.forEach(command => {
+        if (command && typeof command.destroy === 'function') {
+          try {
+            command.destroy();
+          } catch (e) {
+            console.warn('Error destroying shader command:', e);
+          }
+        }
+      });
+      commandsRef.current = [];
+    }
 
     // Create commands for each shader
     commandsRef.current = shaders.map(shader => {
@@ -203,39 +251,8 @@ export function useWebGLRenderer({
 
     // If no shaders are enabled, just render the video directly
     if (enabledShaders.length === 0) {
-      // Create a simple pass-through shader
-      const simplePassthrough = regl({
-        frag: `
-          precision mediump float;
-          uniform sampler2D u_texture;
-          varying vec2 v_texCoord;
-          void main() {
-            gl_FragColor = texture2D(u_texture, v_texCoord);
-          }
-        `,
-        vert: vertexShaderSource,
-        attributes: {
-          a_position: [
-            [-1, -1],
-            [1, -1],
-            [-1, 1],
-            [1, 1]
-          ],
-          a_texCoord: [
-            [0, 1],  // Flip Y coordinate: (0,0) -> (0,1)
-            [1, 1],  // Flip Y coordinate: (1,0) -> (1,1)
-            [0, 0],  // Flip Y coordinate: (0,1) -> (0,0)
-            [1, 0]   // Flip Y coordinate: (1,1) -> (1,0)
-          ]
-        },
-        uniforms: {
-          u_texture: regl.prop('texture')
-        },
-        count: 4,
-        primitive: 'triangle strip'
-      });
-
-      simplePassthrough({
+      // Use the pre-created simple pass-through shader
+      simplePassthroughRef.current({
         texture: currentTexture
       });
     } else {
